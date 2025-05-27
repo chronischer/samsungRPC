@@ -1,0 +1,34 @@
+#!/bin/bash
+TOKEN="$1"
+PACKAGE="$2"
+PIPE=bashrpc_wsinput
+FIFO="$HOME/$PIPE"
+[ -p "$FIFO" ] || mkfifo "$FIFO"
+
+websocat wss://gateway.discord.gg/?encoding=json&v=9 < "$FIFO" &
+WS_PID=$!
+
+heartbeat(){
+    while true; do 
+        sleep 30
+        echo "ping" > "$FIFO"
+    done
+}
+
+cleanup() {
+    echo "Ending Rich Presence..."
+    curl -X POST -H "Authorization:$TOKEN" -H "Content-Type:application/json" -d "{\"package_name\":\"$PACKAGE\",\"update\":\"STOP\"}" "https://discord.com/api/v10/presences"
+    kill "$WS_PID" 2>/dev/null
+    rm -f "$FIFO"
+    exit
+}
+
+trap cleanup EXIT INT
+
+echo "{\"t\":null,\"s\":null,\"op\":2,\"d\":{\"capabilities\":65,\"compress\":false,\"largeThreshold\":100,\"properties\":{\"browser\":\"Discord Client\",\"device\":\"ktor\",\"os\":\"Windows\"},\"token\":\"$TOKEN\"}}" > "$FIFO"
+
+sleep 3
+
+curl -X POST -H "Authorization:$TOKEN" -H "Content-Type:application/json" -d "{\"package_name\":\"$PACKAGE\",\"update\":\"START\"}" "https://discord.com/api/v10/presences"
+
+heartbeat
